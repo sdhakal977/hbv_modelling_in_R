@@ -85,7 +85,7 @@ summary(hbv)   # No missing values
     ##  3rd Qu.:2000-04-01   3rd Qu.: 5.810   3rd Qu.:10.000   3rd Qu.:4.10  
     ##  Max.   :2000-12-31   Max.   :16.090   Max.   :41.000   Max.   :5.70
 
-# Object 1
+# Objective 1
 
 **Develop a reproducible, functional HBV model that correctly accounts
 for water balance.**  
@@ -543,7 +543,7 @@ and
 2. Whether changing the recession coefficient for UZ changes the
 steepness of the Qsim curve to match Qobs.  
 
-# Object 2
+# Objective 2
 
 **Understand how making percolation (Perc) a function of the upper zone
 changes baseflow (Q1)**  
@@ -1005,7 +1005,7 @@ p_rve_nse
 
 ![](hbv_model_dev_files/figure-gfm/run_2_errors-1.png)<!-- -->
 
-# Object 3
+# Objective 3
 
 **Understand how changing recession coefficient changes quick discharge
 (Qo) with percolation of 5% of UZ**  
