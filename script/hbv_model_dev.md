@@ -159,7 +159,7 @@ performance. Following this, the functions are run using the provided
 data and the initial condition mentioned above to test that the model
 runs as desired.
 
-  
+<img src="../data/schematic_representation_of_HBV_model.png" width="100%" />  
 
 The HBV model uses a number of parameters, which are:  
 ***FC***: Field capacity or the maximum soil moisture storage (mm)  

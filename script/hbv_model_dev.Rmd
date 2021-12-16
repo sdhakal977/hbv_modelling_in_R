@@ -97,7 +97,7 @@ Figure below depicts the model structure that is used to develop an HBV model in
 
 Until **`Run 1`**, the code chunks show functions that are written to create an HBV model, plot model results, and assess the model performance. Following this, the functions are run using the provided data and the initial condition mentioned above to test that the model runs as desired.
 
-```{r, echo = FALSE, eval = FALSE, out.width = "100%"}
+```{r, echo = FALSE, out.width = "100%"}
 img_path <- file.path("..", "data", "schematic_representation_of_HBV_model.png")
 img <- readPNG(img_path, native = TRUE, info = TRUE)
 knitr::include_graphics(img_path)
