@@ -102,25 +102,30 @@ soil moisture reservoir, none to a small amount of direct flow (Qd) was
 assumed, and hence after an examination of the mean and maximum of the
 observed discharge and precipitation, a small soil moisture (SM) and a
 large field capacity (FC) values were chosen. The evapotransipration
-threshold was set to a maximum of 1, *β* value to simulate recharge flux
-to a maximum of 4, and capillary flux was set to a small value of 0.01.
-With a small SM, a large FC, and a large *β*, the expected recharge
-(Qin) was expected to be large. Similarly, for upper zone reservoir,
-water content was assumed to be small though larger in comparison to the
-SM, *α* was set to 1, the recession coefficient (Kf) to 0.005, and the
-percolation was set to a fixed value of 0.1. With these parameter and
-variable values, quick discharge (Qo) was expected to be larger than Qd
-but smaller than Qin. It was expected that with relation between the SM
-and UZ through Qin and Cf and the values of *α* and Kf, the discharge
-curve would match the curvilinear shape of the observed discharge
-(Qobs), that there would also be a match with the rising and recession
-limbs, how fast they climb and recess. Finally for the lower zone
-reservoir, the water content was assumed to be more than that of the
-upper zone. The recession coefficient, Ks, was set to 0.05, a value
-larger than Kf, to allow quick recession. At this point, there should be
-a parameter that controls the rising limb of the lower zone, because
-with fixed percolation, with no parameter to relate upper zone, lower
-zone, soil precipitation, and precipitation to each other, and no
+threshold was set to a maximum of 1,
+![\\beta](https://latex.codecogs.com/png.latex?%5Cbeta "\beta") value to
+simulate recharge flux to a maximum of 4, and capillary flux was set to
+a small value of 0.01. With a small SM, a large FC, and a large
+![\\beta](https://latex.codecogs.com/png.latex?%5Cbeta "\beta"), the
+expected recharge (Qin) was expected to be large. Similarly, for upper
+zone reservoir, water content was assumed to be small though larger in
+comparison to the SM,
+![\\alpha](https://latex.codecogs.com/png.latex?%5Calpha "\alpha") was
+set to 1, the recession coefficient (Kf) to 0.005, and the percolation
+was set to a fixed value of 0.1. With these parameter and variable
+values, quick discharge (Qo) was expected to be larger than Qd but
+smaller than Qin. It was expected that with relation between the SM and
+UZ through Qin and Cf and the values of
+![\\alpha](https://latex.codecogs.com/png.latex?%5Calpha "\alpha") and
+Kf, the discharge curve would match the curvilinear shape of the
+observed discharge (Qobs), that there would also be a match with the
+rising and recession limbs, how fast they climb and recess. Finally for
+the lower zone reservoir, the water content was assumed to be more than
+that of the upper zone. The recession coefficient, Ks, was set to 0.05,
+a value larger than Kf, to allow quick recession. At this point, there
+should be a parameter that controls the rising limb of the lower zone,
+because with fixed percolation, with no parameter to relate upper zone,
+lower zone, soil precipitation, and precipitation to each other, and no
 parameter to define the curvilinear shape of the discharge, baseflow
 (Q0) would be flat. That is, any changes in precipitation that would
 drive changes in discharge would not be correspondingly observed for the
@@ -154,7 +159,7 @@ performance. Following this, the functions are run using the provided
 data and the initial condition mentioned above to test that the model
 runs as desired.
 
-<img src="../data/schematic_representation_of_HBV_model.png" width="100%" />
+  
 
 The HBV model uses a number of parameters, which are:  
 ***FC***: Field capacity or the maximum soil moisture storage (mm)  
@@ -164,10 +169,12 @@ The HBV model uses a number of parameters, which are:
 value (-)  
 ***Alpha***: Measure for non-linearity of flow in quick runoff reservoir
 (-)  
-****K*<sub>*f*</sub>***: Recession coefficient for runoff from quick
-runoff reservoir (*d**a**y*<sup> − 1</sup>)  
-****K*<sub>*s*</sub>***: Recession coefficient for runoff from base flow
-reservoir (*d**a**y*<sup> − 1</sup>)  
+***![K\_{f}](https://latex.codecogs.com/png.latex?K_%7Bf%7D "K_{f}")***:
+Recession coefficient for runoff from quick runoff reservoir
+(![day^{-1}](https://latex.codecogs.com/png.latex?day%5E%7B-1%7D "day^{-1}"))  
+***![K\_{s}](https://latex.codecogs.com/png.latex?K_%7Bs%7D "K_{s}")***:
+Recession coefficient for runoff from base flow reservoir
+(![day^{-1}](https://latex.codecogs.com/png.latex?day%5E%7B-1%7D "day^{-1}"))  
 ***PERC***: Constant percolation rate occurring when water is available
 (mm/day)  
 ***CFLUX***: Maximum value for Capillary Flow (mm/day)  
@@ -381,25 +388,34 @@ The model performance can be evaluated using two objective functions,
 Nash–Sutcliffe efficiency (NSE) and relative volumetric error (RVE). The
 equations for these are as follows:  
 
-$$NSE = 1 - \\frac {\\sum\_{i=1}^{n} (Q\_{sim,i} - Q\_{obs, i})^2} {\\sum\_{i=1}^{n} (Q\_{obs, i} - \\bar{Q}\_{obs})^2}$$
+![NSE = 1 - \\frac {\\sum\_{i=1}^{n} (Q\_{sim,i} - Q\_{obs, i})^2} {\\sum\_{i=1}^{n} (Q\_{obs, i} - \\bar{Q}\_{obs})^2}](https://latex.codecogs.com/png.latex?NSE%20%3D%201%20-%20%5Cfrac%20%7B%5Csum_%7Bi%3D1%7D%5E%7Bn%7D%20%28Q_%7Bsim%2Ci%7D%20-%20Q_%7Bobs%2C%20i%7D%29%5E2%7D%20%7B%5Csum_%7Bi%3D1%7D%5E%7Bn%7D%20%28Q_%7Bobs%2C%20i%7D%20-%20%5Cbar%7BQ%7D_%7Bobs%7D%29%5E2%7D "NSE = 1 - \frac {\sum_{i=1}^{n} (Q_{sim,i} - Q_{obs, i})^2} {\sum_{i=1}^{n} (Q_{obs, i} - \bar{Q}_{obs})^2}")
+
   
   
 
-$$RVE = \\Bigg\[\\frac {\\sum\_{i=1}^{n} (Q\_{sim,i} - Q\_{obs, i})} {\\sum\_{i=1}^{n} (Q\_{obs, i})}\\Bigg\] \\times 100\\%$$
+![RVE = \\Bigg\[\\frac {\\sum\_{i=1}^{n} (Q\_{sim,i} - Q\_{obs, i})} {\\sum\_{i=1}^{n} (Q\_{obs, i})}\\Bigg\] \\times 100\\%](https://latex.codecogs.com/png.latex?RVE%20%3D%20%5CBigg%5B%5Cfrac%20%7B%5Csum_%7Bi%3D1%7D%5E%7Bn%7D%20%28Q_%7Bsim%2Ci%7D%20-%20Q_%7Bobs%2C%20i%7D%29%7D%20%7B%5Csum_%7Bi%3D1%7D%5E%7Bn%7D%20%28Q_%7Bobs%2C%20i%7D%29%7D%5CBigg%5D%20%5Ctimes%20100%5C%25 "RVE = \Bigg[\frac {\sum_{i=1}^{n} (Q_{sim,i} - Q_{obs, i})} {\sum_{i=1}^{n} (Q_{obs, i})}\Bigg] \times 100\%")
 
 where,  
-*Q*<sub>*s**i**m*</sub> is simulated streamflow, and  
-*Q*<sub>*o**b**s*</sub> is observed streamflow.  
+![Q\_{sim}](https://latex.codecogs.com/png.latex?Q_%7Bsim%7D "Q_{sim}")
+is simulated streamflow, and  
+![Q\_{obs}](https://latex.codecogs.com/png.latex?Q_%7Bobs%7D "Q_{obs}")
+is observed streamflow.  
 
-Both NSE and RVE are dimensionless. Whereas NSE ranges from  − ∞ to 1.0,
-with 1.0 corresponding to a perfect fit, RVE ranges between  − ∞ and ∞,
+Both NSE and RVE are dimensionless. Whereas NSE ranges from
+![-\\infty](https://latex.codecogs.com/png.latex?-%5Cinfty "-\infty") to
+1.0, with 1.0 corresponding to a perfect fit, RVE ranges between
+![-\\infty](https://latex.codecogs.com/png.latex?-%5Cinfty "-\infty")
+and ![\\infty](https://latex.codecogs.com/png.latex?%5Cinfty "\infty"),
 with 0 corresponding to the best model with no volumetric error (or,
 mass balance error). Hence, according to these objective functions, a
 good model is one for which NSE is maximized and RVE is minimized. More
 objectively, a model with NSE between 0.6 and 0.8 is taken to be a
 reasonably good performing model and with 0.8 and 0.9 as a very good
-model. With respect to RVE, a model with an error between ± 5% is a very
-good model, whereas the one with an error between ± 5% and ± 10% is a
+model. With respect to RVE, a model with an error between
+![\\pm](https://latex.codecogs.com/png.latex?%5Cpm "\pm") 5% is a very
+good model, whereas the one with an error between
+![\\pm](https://latex.codecogs.com/png.latex?%5Cpm "\pm") 5% and
+![\\pm](https://latex.codecogs.com/png.latex?%5Cpm "\pm") 10% is a
 reasonably well performing model.
 
 ### Create a function to compute NSE and RVE
@@ -1514,10 +1530,13 @@ percolation was modified to be a function of UZ (Perc = x% of UZ). By
 modifying percolation in this way, a dynamic baseflow was achieved.
 According to the initial condition that was set and the RVE and NSE
 values, the optimum percolation was determined to be 10% of UZ. A
-limitation of this is that *α* value was not considered. UZ changes with
-changes in *α* and this would translate to changes in percolation. As
-such, it is thought that *α* parameter should have been tuned before
-modifying Perc.  
+limitation of this is that
+![\\alpha](https://latex.codecogs.com/png.latex?%5Calpha "\alpha") value
+was not considered. UZ changes with changes in
+![\\alpha](https://latex.codecogs.com/png.latex?%5Calpha "\alpha") and
+this would translate to changes in percolation. As such, it is thought
+that ![\\alpha](https://latex.codecogs.com/png.latex?%5Calpha "\alpha")
+parameter should have been tuned before modifying Perc.  
 
 After modifying percolation, recession coefficient (Kf) was tuned to
 improve the match between simulated and observed discharge curves,
