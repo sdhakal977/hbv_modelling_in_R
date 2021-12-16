@@ -59,7 +59,7 @@ summary(hbv)   # No missing values
 ```
 
 
-# Object 1
+# Objective 1
 **Develop a reproducible, functional HBV model that correctly accounts for water balance.** \
 
 To achieve this objective, functions are written in R to develop an HBV model, and to run, plot, and analyze the model results. RMarkdown is chosen for reproducibility of model development and simulations. Hence, codes, outputs, as well as any changes made throughout the modelling process are documented. \
@@ -425,7 +425,7 @@ Given the results, further examine the following two phenomena: \
 2. Whether changing the recession coefficient for UZ changes the steepness of the Qsim curve to match Qobs. \
 
 
-# Object 2
+# Objective 2
 **Understand how making percolation (Perc) a function of the upper zone changes baseflow (Q1)** \
 
 To achieve this objective, Perc is modeled as a function of UZ, specifically, as a certain percentage of UZ. For the purposes of examination, five different percentage values are chosen. Except for Perc, the initial conditions and parameter values are kept the same as in Run 1. \
@@ -704,7 +704,7 @@ p_rve_nse
 
 
 
-# Object 3
+# Objective 3
 **Understand how changing recession coefficient changes quick discharge (Qo) with percolation of 5% of UZ** \
 
 It is understood that the recession coefficient is dependent on the ground condition. For the purposes of the assignment, this information is not available. Hence, several kf values can be tested to come up with an optimized value. So, five different models are run, with values of Kf that successively increase (Kf = {0.001, 0.003, 0.005, 0.007, 0.009, 0.01} (per day)). The Kf is tuned by keeping the initial conditions the same as in Run 1 and 2 (all) and taking the percolation to be 5% of UZ. \
