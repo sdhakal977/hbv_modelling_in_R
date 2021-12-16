@@ -1,0 +1,1040 @@
+---
+title: "Development of HBV Water Balance Model in R"
+author: "Surakshya Dhakal"
+date: "5/31/2021"
+output: rmarkdown::github_document
+keep_md: true
+---
+
+# Organize project directory
+To run this RMarkdown, the project folder should have separate sub-folders for "data", "output", and "script" (all in lowercase). The "data" folder will store the raw data and the cleaned version of the data. The "script" folder will store the RMarkdown file.The "output" folder will have separate folders for "images" and "paper." The "paper" folder will store project related templates and manuscripts. The "image" folder will store any figures generated from running the markdown. 
+
+After creating the project directory, set the working directory to the project directory.\
+
+# Load libraries
+```{r load_libraries, warning=FALSE, message=FALSE}
+if(!require("pacman")) install.packages("pacman")
+pacman::p_load(dplyr, tidyr, pander, ggplot2, ggthemes, cowplot, gridExtra, png)
+```
+
+
+```{r setup, echo=FALSE}
+## Set root directory for knitr
+#require("knitr")
+#opts_knit$set(root.dir = "C:/Users/surak/Documents/ITC_UT/MSc/Courses/Elective_4_Catchment_Hydrology/Assignments/HBV_model")
+```
+
+
+# Read data
+The HBV dataset in csv format is created from the original excel file `Data set HBV Model 1950-1953_Q42019.xlsx` that was provided as part of the assignment. Notes, formula columns, and graphs were removed from the excel file and saved as `hbv_data.csv`. The cleaned dataset, thus, only contains time series data on precipitation (mm/day) and potential evapotranspiration (mm/day), which span three years from January 1, 1998 to December 31, 2000. 
+
+```{r read_data, warning=FALSE}
+hbv <- read.csv("../data/hbv_data.csv")
+
+str(hbv)   # Date is read in as character;
+           # Qobs (mm/day) as numeric;
+           # P (precipitation (mm/day)) as numeric; and
+           # Etp (potential evapotranspiration (mm/day)) as numeric.
+```
+
+
+```{r format_date}
+# Convert Date to Date format
+hbv$Date <- as.Date(hbv$Date, "%m/%d/%Y")
+```
+
+
+```{r exam_data1}
+# Examine data
+## Show first six observations
+pander(head(hbv))
+```
+
+
+```{r exam_data2}
+# Examine data
+## Summarize the data
+summary(hbv)   # No missing values
+```
+
+
+# Object 1
+**Develop a reproducible, functional HBV model that correctly accounts for water balance.** \
+
+To achieve this objective, functions are written in R to develop an HBV model, and to run, plot, and analyze the model results. RMarkdown is chosen for reproducibility of model development and simulations. Hence, codes, outputs, as well as any changes made throughout the modelling process are documented. \
+
+The initial conditions and parameter values that were chosen are given in the table below and can also be found under `Run 1`. Starting with soil moisture reservoir, none to a small amount of direct flow (Qd) was assumed, and hence after an examination of the mean and maximum of the observed discharge and precipitation, a small soil moisture (SM) and a  large field capacity (FC) values were chosen. The evapotransipration threshold was set to a maximum of 1, $\beta$ value to simulate recharge flux to a maximum of 4, and capillary flux was set to a small value of 0.01. With a small SM, a large FC, and a large $\beta$, the expected recharge (Qin) was expected to be large. Similarly, for upper zone reservoir, water content was assumed to be small though larger in comparison to the SM, $\alpha$ was set to 1, the recession coefficient (Kf) to 0.005, and the percolation was set to a fixed value of 0.1. With these parameter and variable values, quick discharge (Qo) was expected to be larger than Qd but smaller than Qin. It was expected that with relation between the SM and UZ through Qin and Cf and the values of $\alpha$ and Kf, the discharge curve would match the curvilinear shape of the observed discharge (Qobs), that there would also be a match with the rising and recession limbs, how fast they climb and recess. Finally for the lower zone reservoir, the water content was assumed to be more than that of the upper zone. The recession coefficient, Ks, was set to 0.05, a  value larger than Kf, to allow quick recession. At this point, there should be a parameter that controls the rising limb of the lower zone, because with fixed percolation,  with no parameter to relate upper zone, lower zone, soil precipitation, and precipitation to each other, and no parameter to define the curvilinear shape of the discharge, baseflow (Q0) would be flat. That is, any changes in precipitation that would drive changes in discharge would not be correspondingly observed for the baseflow (Qo). In model runs following the first, changes are, thus, introduced for percolation.
+
+```{r echo=FALSE}
+int_con_run_1 <- data.frame(
+                "sm" = 10, 
+                "uz" = 30, 
+                "lz" = 50
+                )
+
+param_run_1 <- data.frame(
+                "FC" = 650, 
+                "Beta" = 4, 
+                "LP" = 1,
+                "Cflux" = 0.01,
+                "Alpha" = 1,
+                "Kf" = 0.005,   
+                "Ks" = 0.05,
+                "Perc" = 0.1
+                )
+
+pander(combine <- cbind(int_con_run_1, param_run_1))
+
+```
+
+
+
+## HBV model development in R
+HBV model is used to simulate rainfall-runoff behavior. It is a lumped conceptual catchment model with several routines. For the purposes of the assignment, only rainfall is considered as precipitation with three reservoirs - soil, upper zone, and lower zone - and correspondingly, three routines, namely soil moisture, a quick response, and a slow response. For each, simple equations are solved to estimate runoff, which are summed to get predicted stream discharge.\
+
+Figure below depicts the model structure that is used to develop an HBV model in R. The diagram highlights the three linked compartments that allow flow in and out, and hence, work on the principle of mass conservation. The water balance is solved for each compartment using a small number of parameters and variables, the values for which are specific to water basins. \
+
+Until **`Run 1`**, the code chunks show functions that are written to create an HBV model, plot model results, and assess the model performance. Following this, the functions are run using the provided data and the initial condition mentioned above to test that the model runs as desired.
+
+```{r, echo = FALSE, out.width = "100%"}
+img_path <- file.path("..", "data", "schematic_representation_of_HBV_model.png")
+img <- readPNG(img_path, native = TRUE, info = TRUE)
+knitr::include_graphics(img_path)
+```
+
+
+The HBV model uses a number of parameters, which are: \
+***FC***: Field capacity or the maximum soil moisture storage (mm) \
+***Beta***: Parameter of power relationship to simulate indirect runoff (-) \
+***LP***: Limit above which evapotranspiration reaches its potential value (-) \
+***Alpha***: Measure for non-linearity of flow in quick runoff reservoir (-) \
+***\(K_{f}\)***: Recession  coefficient  for  runoff  from  quick  runoff reservoir ($day^{-1}$) \
+***\(K_{s}\)***: Recession coefficient for runoff from base flow reservoir ($day^{-1}$) \
+***PERC***: Constant percolation rate occurring when water is available (mm/day) \
+***CFLUX***: Maximum value for Capillary Flow (mm/day) \
+
+
+The model is initialized using the following variables: \
+**SM**: Soil moisture storage (mm), \
+**UZ**: Upper zone storage (mm), and \
+**LZ**: Lower zone storage (mm). \
+
+
+### Create a function to run the model
+```{r hbv_mod_func}
+
+hbv_run <- function(df, int_conds, params, perc, pct_perc){
+  
+  # The function uses the following arguments:
+  # df: a data frame that holds the data
+  # int_conds: a data frame that holds the initial conditions
+  # params: a data frame that holds the model parameter values
+  # perc: a numeric value for percolation
+  # pct_perc: a numeric value for percent percolation
+  
+  
+  # Create empty vectors of length equal to ...
+  # ... number of observations + 1 so that the ...
+  # ... first location holds the initial value. 
+  SM  = rep(0, dim(df)[1]+1)
+  UZ  = rep(0, dim(df)[1]+1)
+  LZ  = rep(0, dim(df)[1]+1)
+
+  Qd = rep(0, dim(df)[1]+1)
+  Qin = rep(0, dim(df)[1]+1)
+  Eta = rep(0, dim(df)[1]+1)
+  Cf = rep(0, dim(df)[1]+1)
+  Qo = rep(0, dim(df)[1]+1)
+  Perc = rep(0, dim(hbv)[1]+1)
+  Q1 = rep(0, dim(df)[1]+1)
+  
+  
+  # Declare intial conditions
+  SM[1] = int_conds$sm
+  UZ[1] = int_conds$uz
+  LZ[1] = int_conds$lz
+  
+  
+  # Declare initial percolation
+  if(perc == 0.1)
+      Perc[1] = perc   # Percolation is taken as a constant
+    else{
+      Perc[1] = UZ[1]*pct_perc   # Percolation as a percentage of UZ
+    }
+
+
+  # Run the statement once for each time step
+  # This updates SM, LZ, and UZ values, and ...
+  # ... creates a vector of values for all variables
+  for (i in 1:dim(df)[1]+1){
+    # print(i)   # Starts at i = 2 and goes until i = 1097
+    # break
+  
+    # Soil moisture routine
+    Qd[i] = pmax((df$P[i-1] + SM[i-1] - params$fc), 0)
+    # Fills in Qd[2], Qd[3], and so on until Qd[1097]
+    # Qd[1] is already set to 0
+  
+    Qin[i] = ((SM[i-1]/params$fc)^params$beta) * (df$P[i-1] - Qd[i])
+  
+    Eta[i] = df$Etp[i-1] * pmin((SM[i-1] / (params$fc * params$lp)), 1)
+  
+    Cf[i] = params$cflux * ((params$fc - SM[i-1]) / params$fc)
+  
+    SM[i] = SM[i-1] + df$P[i-1] + Cf[i] - Eta[i] - Qin[i] - Qd[i]
+    # Value of SM is updated from SM[2] onward.
+    # SM[1] has the initial value that was declared.
+  
+  
+    # Quick runoff routine
+    Qo[i] = params$kf * ((UZ[i-1])^(1 + params$alpha))
+  
+    UZ[i] = pmax(UZ[i-1] + Qin[i] - Cf[i] - Qo[i] - Perc[i-1], 0) 
+    # Value of UZ is updated from UZ[2] onward.
+    # UZ[1] has the initial value that was declared.
+    # As storage cannot be negative, max(x, 0) keeps the UZ value positive.
+  
+    if(perc == 0.1)
+      Perc[i] = perc   # Percolation is taken as constant
+    else{
+      Perc[i] = UZ[i-1]*pct_perc   # Percolation changes in each time step as...
+                                   # ... a percentage of UZ.
+                                   # Chosen modification. 
+    }
+    
+    
+    # Baseflow routine
+    Q1[i] = params$ks * (LZ[i-1])
+    LZ[i] = LZ[i-1] + Perc[i-1] - Q1[i]
+
+  }
+  
+    
+  # Create a dataframe to store values for variables
+  df_new <- df %>%
+  mutate(
+    Eta = Eta[-1],   # Since the first position for each variable was used ...  
+    Qin = Qin[-1],   # ... as a filler, these are excluded from the new data frame. 
+    Qd = Qd[-1],     # Doing so, the number of rows in the new data frame will ...
+    Cf = Cf[-1],     # ... equal the number of rows in the original df ...
+    SM = SM[-1],     # ... (in this case, 1096).
+    Qo = Qo[-1],
+    Perc = Perc[-1],
+    UZ = UZ[-1],
+    Q1 = Q1[-1],
+    LZ = LZ[-1],
+    Qsim = Qd + Qo + Q1)
+  
+  
+  # Return
+  return(df_new)
+
+}
+
+```
+
+
+### Create a function to plot observed and simulated data
+```{r plt_discharge_func}
+# Write a function to create a plot of observed and simulated data
+plt_q <- function(df){
+  # Add plot components
+
+  ## Date breaks
+  ## Currently not automated, but should be.
+  datebreaks <- seq(as.Date("1998-01-01"), as.Date("2001-01-31"), by = "4 month")
+
+  ## Precipitation and actual evapotranspiration
+  p_eta <- ggplot(df, aes(x = Date)) +
+    geom_line(aes(y = P, colour = "Rainfall (mm)")) +
+    geom_line(aes(y = Eta, colour = "ETa (mm)")) +
+    guides(colour=guide_legend(title="")) +
+    scale_x_date(position = "top") +
+    scale_y_reverse(limits = c(41, 0)) +   # Limit should change according to ...
+    ylab("") +                             # ... the max value of precipitation.
+    xlab("") +                             
+    theme_economist()
+  
+  ## Observed and simulated discharges
+  q_all <- ggplot(df,
+    aes(x = Date)) +
+    geom_line(aes(y = Qobs, colour = "Qobs (mm/day)"), size = 0.75) +
+    geom_line(aes(y = Qsim, colour = "Qsim (mm/day)"), size = 0.8) +
+    geom_line(aes(y = Qd, colour = "Qd (mm/day)")) +
+    geom_line(aes(y = Qo, colour = "Qo (mm/day)")) +
+    geom_line(aes(y = Q1, colour = "Q1 (mm/day)"), size = 0.75) +
+    guides(colour = guide_legend(title="")) +
+    scale_y_continuous(name = "", limits = c(0, 41)) +   # Limit should change with max(Qsim)
+    scale_x_date(breaks = datebreaks, date_labels =  "%b-%Y") +
+    theme_economist()
+
+  # Put the two plots together
+  # Align vertically
+  plt_run <- plot_grid(p_eta, q_all, ncol=1, align="v")
+  
+  # Return plot
+  return(plt_run)
+}
+```
+
+
+### Create a function to plot changes in storages
+```{r plt_storages_func}
+# Write a function to plot changes in storage
+plt_s <- function(df){
+  # Add plot components
+
+  ## Date breaks
+  ## Manual input of date that should be automated
+  datebreaks <- seq(as.Date("1998-01-01"), as.Date("2001-01-31"), by = "4 month")
+
+  ## Precipitation and actual evapotranspiration
+  p_eta <- ggplot(df, aes(x = Date)) +
+    geom_line(aes(y = P, colour = "Rainfall (mm)")) +
+    geom_line(aes(y = Eta, colour = "ETa (mm)")) +
+    guides(colour=guide_legend(title="")) +
+    scale_x_date(position = "top") +
+    scale_y_reverse(limits = c(41, 0)) +   # Limit should change with max(P)
+    ylab("") +
+    xlab("") +
+    theme_economist()
+  
+  ## SM = Soil Moisture, UZ = Upper Zone, and LZ = Lower Zone
+  s_all <- ggplot(df,
+    aes(x = Date)) +
+    geom_line(aes(y = SM, colour = "SM (mm)")) +
+    geom_line(aes(y = UZ, colour = "UZ (mm)")) +
+    geom_line(aes(y = LZ, colour = "LZ (mm)")) +
+    ylab("Storage (mm)") +
+    guides(colour = guide_legend(title="Reservoirs")) +
+    scale_x_date(breaks = datebreaks, date_labels =  "%b-%Y") +
+    theme_economist()
+
+  # Put the two plots together 
+  # Align vertically
+  p_eta_s_all <- plot_grid(p_eta, s_all, ncol=1, align="v")
+  
+  # Return plot
+  return(p_eta_s_all)
+}
+```
+
+
+
+## Assess model performance
+The model performance can be evaluated using two objective functions, Nash–Sutcliffe efficiency (NSE) and relative volumetric error (RVE). The equations for these are as follows: \
+
+$$NSE = 1 - \frac {\sum_{i=1}^{n} (Q_{sim,i} - Q_{obs, i})^2} {\sum_{i=1}^{n} (Q_{obs, i} - \bar{Q}_{obs})^2}$$
+\
+\
+
+$$RVE = \Bigg[\frac {\sum_{i=1}^{n} (Q_{sim,i} - Q_{obs, i})} {\sum_{i=1}^{n} (Q_{obs, i})}\Bigg] \times 100\%$$
+
+where, \
+$Q_{sim}$ is simulated streamflow, and \
+$Q_{obs}$ is observed streamflow. \
+
+Both NSE and RVE are dimensionless. Whereas NSE ranges from $-\infty$ to 1.0, with 1.0 corresponding to a perfect fit, RVE ranges between $-\infty$ and $\infty$, with 0 corresponding to the best model with no volumetric error (or, mass balance error). Hence, according to these objective functions, a good model is one for which NSE is maximized and RVE is minimized. More objectively, a model with NSE between 0.6 and 0.8 is taken to be a reasonably good performing model and with 0.8 and 0.9 as a very good model. With respect to RVE, a model with an error between $\pm$ 5% is a very good model, whereas the one with an error between $\pm$ 5% and $\pm$ 10% is a reasonably well performing model. 
+
+### Create a function to compute NSE and RVE
+```{r}
+# Define a function to assess model performance
+mod.performance <- function(qsim, qobs){
+  # Calculate relative volumetric error (RVE)
+  rve <- (sum(qsim - qobs) / sum(qobs)) * 100
+  
+  # Calculate Nash-Sutcliffe model efficiency (NSE)
+  nse <- 1 - sum((qsim - qobs)^2) / sum((qobs - mean(qobs))^2)
+
+  error_df <- data.frame(RVE = c(rve), NSE = c(nse))
+  return(error_df)
+}
+```
+
+  
+
+## Run the HBV Model
+
+### Run 1
+Set initial conditions and parameters
+```{r run_1_conds}
+# Create data frames to hold values for ...
+# ... sm, uz, lz, p, beta, lp, cflux, alpha, kf, ks, and perc.
+# The initial conditions are chosen after examining the given data and ...
+# ... reasoning the combination of initial conditions and parameter values ...
+# ... that would not give back insane values for direct, quick, and delayed flows. 
+int_con <- data.frame(
+                "sm" = 10, 
+                "uz" = 30, 
+                "lz" = 50
+                )
+
+param <- data.frame(
+                "fc" = 650,
+                "beta" = 4,
+                "lp" = 1,
+                "cflux" = 0.01,
+                "alpha" = 1,
+                "kf" = 0.005, 
+                "ks" = 0.05
+                )
+
+```
+
+
+Set percolation as a constant of 0.1
+```{r run_1_df}
+# Set percolation as a constant of 0.1
+# Hence, set pct_perc to 0 or any other number for that matter.
+
+# Create a data frame to store values of Run 1
+hbv_run_1 <- hbv_run(hbv, int_con, param, 0.1, 0)
+
+# Summarize the data
+summary(hbv_run_1)
+```
+
+
+### Plot observed and simulated data for Run 1
+```{r run_1_plts, fig.width = 10, fig.height = 7}
+# Plot and save the plot as a png image
+plt_run1 <- plt_q(hbv_run_1)
+ggsave(filename="../output/images/run_1.png", plot = plt_run1, width = 10, height = 8, dpi = 600)
+plt_run1   # Qsim > Qobs; Baseflow is flat
+```
+
+
+```{r run_1_storages, fig.width = 10, fig.height = 7}
+# Plot storages and save the plot as a png image
+p_eta_s_all <- plt_s(hbv_run_1)
+ggsave(filename="../output/images/storages_run_1.png", plot = p_eta_s_all, width = 8, height = 10, dpi = 600)
+
+p_eta_s_all
+```
+
+
+### Assess model performance of Run 1
+```{r mod_perf_run_1}
+# Assess model performance for run 1
+pander(mod.performance(hbv_run_1$Qsim, hbv_run_1$Qobs))   # the model performs OK
+```
+
+Given the results, further examine the following two phenomena: \
+1. Whether changing the percolation changes the pattern of baseflow, and \
+2. Whether changing the recession coefficient for UZ changes the steepness of the Qsim curve to match Qobs. \
+
+
+# Object 2
+**Understand how making percolation (Perc) a function of the upper zone changes baseflow (Q1)** \
+
+To achieve this objective, Perc is modeled as a function of UZ, specifically, as a certain percentage of UZ. For the purposes of examination, five different percentage values are chosen. Except for Perc, the initial conditions and parameter values are kept the same as in Run 1. \
+
+## Run 2.1 with percolation equal to 0.5% of UZ
+```{r run_2_1_df}
+# Make percolation dynamic
+# Hence, set perc to 0 to forgo its use.
+# Assume that 0.5% of the water in the upper zone percolates to the lower zone.
+# Hence, declare pct_perc as: 
+pct_perc <- (0.5/100)
+
+# Create a new data frame to store the values of Run 2.1
+hbv_run_2_1 <- hbv_run(hbv, int_con, param, 0, pct_perc)
+
+summary(hbv_run_2_1)
+```
+
+
+### Plot observed and simulated data for Run 2.1
+```{r run_2_1_plts, fig.width = 10, fig.height = 7}
+# Plot observed and simulated data
+plt_run2_1 <- plt_q(hbv_run_2_1)
+ggsave(filename="../output/images/run_2_1.png", plot = plt_run2_1, width = 10, height = 8, dpi = 600)
+
+# Baseflow changes with percipitation.
+# Still Qsim >> Qobs.
+plt_run2_1
+```
+
+
+```{r run_2_1_storages, fig.width = 10, fig.height = 7}
+# Plot storages for Run 2.1
+p_eta_s_all <- plt_s(hbv_run_2_1)
+ggsave(filename="../output/images/storages_run_2_1.png", plot = p_eta_s_all, width = 8, height = 10, dpi = 600)
+
+p_eta_s_all
+```
+
+
+### Assess model performance of Run 2.1
+```{r mod_perf_run_2_1}
+# Assess model performance for run 2.1
+# Improvement compared to Run 1
+pander(mod.performance(hbv_run_2_1$Qsim, hbv_run_2_1$Qobs))
+```
+
+
+## Run 2.2 with percolation equal to 1% of UZ
+```{r run_2_2_df}
+# Make percolation dynamic
+# Hence, set perc to 0.
+# Assume that 1% of the water in the upper zone percolates to the lower zone.
+# Hence, declare pct_perc as: 
+pct_perc <- (1/100)
+
+# Create a new data frame to store the values of Run 2.2
+hbv_run_2_2 <- hbv_run(hbv, int_con, param, 0, pct_perc)
+
+summary(hbv_run_2_2)
+```
+
+
+### Plot observed and simulated data for Run 2.2
+```{r run_2_2_plts, fig.width = 10, fig.height = 7}
+# Plot observed and simulated data
+plt_run2_2 <- plt_q(hbv_run_2_2)
+ggsave(filename="../output/images/run_2_2.png", plot = plt_run2_2, width = 10, height = 8, dpi = 600)
+
+# Baseflow changes with precipitation.
+# Still Qsim >> Qobs.
+plt_run2_2
+```
+
+
+```{r run_2_2_storages, fig.width = 10, fig.height = 7}
+# Plot storages for Run 2.2
+p_eta_s_all <- plt_s(hbv_run_2_2)
+ggsave(filename="../output/images/storages_run_2_2.png", plot = p_eta_s_all, width = 8, height = 10, dpi = 600)
+
+p_eta_s_all
+```
+
+
+### Assess model performance of Run 2.2
+```{r mod_perf_run_2_2}
+# Assess model performance for Run 2.2
+# Slight improvement compared to Run 2.1 and perceptible improvement over Run 1.
+pander(mod.performance(hbv_run_2_2$Qsim, hbv_run_2_2$Qobs))
+```
+
+
+## Run 2.3 with percolation equal to 2% of UZ
+```{r run_2_3_df}
+# Make percolation dynamic
+# Hence, set perc to 0.
+# Assume that 2% of the water in the upper zone percolates to the lower zone.
+# Hence, declare pct_perc as: 
+pct_perc <- (2/100)
+
+# Create a new data frame to store the values of Run 2.3
+hbv_run_2_3 <- hbv_run(hbv, int_con, param, 0, pct_perc)
+
+summary(hbv_run_2_3)
+```
+
+
+### Plot observed and simulated data for Run 2.3
+```{r run_2_3_plts, fig.width = 10, fig.height = 7}
+# Plot observed and simulated data
+plt_run2_3 <- plt_q(hbv_run_2_3)
+ggsave(filename="../output/images/run_2_3.png", plot = plt_run2_3, width = 10, height = 8, dpi = 600)
+
+# Baseflow changes with precipitation.
+# Still Qsim >> Qobs.
+plt_run2_3
+```
+
+
+```{r run_2_3_storages, fig.width = 10, fig.height = 7}
+# Plot storages for Run 2.3
+p_eta_s_all <- plt_s(hbv_run_2_3)
+ggsave(filename="../output/images/storages_run_2_3.png", plot = p_eta_s_all, width = 8, height = 10, dpi = 600)
+
+p_eta_s_all
+```
+
+
+### Assess model performance of Run 2.3
+```{r mod_perf_run_2_3}
+# Assess model performance for run 2.3
+# Improvement compared to run 1
+pander(mod.performance(hbv_run_2_3$Qsim, hbv_run_2_3$Qobs))
+```
+
+
+## Run 2.4 with percolation equal to 5% of UZ
+```{r run_2_4_df}
+# Make percolation dynamic
+# Hence, set perc to 0.
+# Assume that 5% of the water in the upper zone percolates to the lower zone.
+# Hence, declare pct_perc as: 
+pct_perc <- (5/100)
+
+# Create a new dataframe to store the values of Run 2.4
+hbv_run_2_4 <- hbv_run(hbv, int_con, param, 0, pct_perc)
+
+summary(hbv_run_2_4)
+```
+
+
+### Plot observed and simulated data for Run 2.4
+```{r run_2_4_plts, fig.width = 10, fig.height = 7}
+# Plot observed and simulated data
+plt_run2_4 <- plt_q(hbv_run_2_4)
+ggsave(filename="../output/images/run_2_4.png", plot = plt_run2_4, width = 10, height = 8, dpi = 600)
+
+# Baseflow changes with precipitation.
+# Still Qsim >> Qobs.
+plt_run2_4
+```
+
+
+```{r run_2_4_storages, fig.width = 10, fig.height = 7}
+# Plot storages for Run 2.4
+p_eta_s_all <- plt_s(hbv_run_2_4)
+ggsave(filename="../output/images/storages_run_2_4.png", plot = p_eta_s_all, width = 8, height = 10, dpi = 600)
+
+p_eta_s_all
+```
+
+
+### Assess model performance of Run 2.4
+```{r mod_perf_run_2_4}
+# Assess model performance for run 2.4
+# Slight improvement compared to run 2.3
+pander(mod.performance(hbv_run_2_4$Qsim, hbv_run_2_4$Qobs))
+```
+
+
+## Run 2.5 with percolation equal to 10% of UZ
+```{r run_2_5_df}
+# Make percolation dynamic
+# Hence, set perc to 0.
+# Assume that 10% of the water in the upper zone percolates to the lower zone.
+# Hence, declare pct_perc as: 
+pct_perc <- (10/100)
+
+# Create a new dataframe to store the values of Run 2.4
+hbv_run_2_5 <- hbv_run(hbv, int_con, param, 0, pct_perc)
+
+summary(hbv_run_2_5)
+```
+
+
+### Plot observed and simulated data for Run 2.5
+```{r run_2_5_plts, fig.width = 10, fig.height = 7}
+# Plot observed and simulated data
+plt_run2_5 <- plt_q(hbv_run_2_5)
+ggsave(filename="../output/images/run_2_5.png", plot = plt_run2_5, width = 10, height = 8, dpi = 600)
+
+# Baseflow changes with precipitation.
+# Still Qsim >> Qobs.
+plt_run2_5
+```
+
+
+```{r run_2_5_storages, fig.width = 10, fig.height = 7}
+# Plot storages for Run 2.4
+p_eta_s_all <- plt_s(hbv_run_2_5)
+ggsave(filename="../output/images/storages_run_2_5.png", plot = p_eta_s_all, width = 8, height = 10, dpi = 600)
+
+p_eta_s_all
+```
+
+
+### Assess model performance of Run 2.5
+```{r mod_perf_run_2_5}
+# Assess model performance for run 2.5
+# Slight improvement compared to Run 2.4
+pander(mod.performance(hbv_run_2_5$Qsim, hbv_run_2_5$Qobs))
+```
+
+
+
+```{r run_2_errors, fig.width = 10, fig.height = 7}
+# Extract RVE
+RVE <- c(mod.performance(hbv_run_2_1$Qsim, hbv_run_2_1$Qobs)[1],
+                           mod.performance(hbv_run_2_2$Qsim, hbv_run_2_2$Qobs)[1],
+                           mod.performance(hbv_run_2_3$Qsim, hbv_run_2_3$Qobs)[1],
+                           mod.performance(hbv_run_2_4$Qsim, hbv_run_2_4$Qobs)[1],
+                           mod.performance(hbv_run_2_5$Qsim, hbv_run_2_5$Qobs)[1]
+                          )   # Returns a list
+
+RVE <- unlist(RVE)   # Unlist
+
+
+# Extract NSE
+NSE <- c(mod.performance(hbv_run_2_1$Qsim, hbv_run_2_1$Qobs)[2],
+                           mod.performance(hbv_run_2_2$Qsim, hbv_run_2_2$Qobs)[2],
+                           mod.performance(hbv_run_2_3$Qsim, hbv_run_2_3$Qobs)[2],
+                           mod.performance(hbv_run_2_4$Qsim, hbv_run_2_4$Qobs)[2],
+                           mod.performance(hbv_run_2_5$Qsim, hbv_run_2_5$Qobs)[2]
+                          )   # Returns a list
+
+NSE <- unlist(NSE)   # Unlist
+
+
+# Create a data frame  
+df <- data.frame(Percent = c(0.5, 1, 2, 5, 10), RVE = RVE, NSE = NSE)
+
+
+# Plot RVE
+p_rve <- ggplot(df, aes(x = Percent)) +
+    geom_line(aes(y = RVE, colour = "RVE (%)"), size = 1) +
+    guides(colour=guide_legend(title="")) +
+    ylab("RVE (%)") +
+    xlab("Percolation as percent of UZ") +
+    theme_economist()
+  
+# Plot NSE
+p_nse <- ggplot(df, aes(x = Percent)) +
+    geom_line(aes(y = NSE, colour = "NSE"), size = 1) +
+    ylab("NSE") +
+    xlab("Percolation as percent of UZ") +
+    guides(colour = guide_legend(title="")) +
+    theme_economist()
+
+# Put the two plots together 
+p_rve_nse <- plot_grid(p_rve, p_nse, ncol=1)
+ggsave(filename="../output/images/run_2_errors.png", plot = p_rve_nse, width = 10, height = 8, dpi = 600)
+p_rve_nse
+  
+```
+
+
+
+
+# Object 3
+**Understand how changing recession coefficient changes quick discharge (Qo) with percolation of 5% of UZ** \
+
+It is understood that the recession coefficient is dependent on the ground condition. For the purposes of the assignment, this information is not available. Hence, several kf values can be tested to come up with an optimized value. So, five different models are run, with values of Kf that successively increase (Kf = {0.001, 0.003, 0.005, 0.007, 0.009, 0.01} (per day)). The Kf is tuned by keeping the initial conditions the same as in Run 1 and 2 (all) and taking the percolation to be 5% of UZ. \
+
+
+### Run 3.1 with Kf = 0.001/day
+```{r run_3_1_conds, eval=TRUE}
+# Make changes to Kf in the parameter set
+# Keep the initial conditions the same as in Run 1 and 2 (all) except for ...
+# ... Kf and make percolation dynamic
+
+# Declare parameters
+param <- data.frame(
+                "fc" = 650,   # unchanged
+                "beta" = 4,   # unchanged
+                "lp" = 1,     # unchanged
+                "cflux" = 0.01,   # unchanged
+                "alpha" = 1,      # unchanged
+                "kf" = 0.001,     # Changed from 0.005
+                "ks" = 0.05   # unchanged
+                )
+
+
+# Make percolation dynamic
+# Hence, set perc to 0.
+# Assume that 5% of the water in the upper zone percolates to the lower zone.
+# Hence, declare pct_perc as: 
+pct_perc <- (5/100)
+```
+
+
+```{r run_3_1_df}
+# Create a new data frame to store the values of Run 3.1
+hbv_run_3_1 <- hbv_run(hbv, int_con, param, 0, pct_perc)
+
+summary(hbv_run_3_1)
+```
+
+
+
+### Plot observed and simulated data for Run 3.1
+```{r run_3_1_plts, fig.width = 10, fig.height = 7}
+# Plot observed and simulated data
+plt_run3_1 <- plt_q(hbv_run_3_1)
+ggsave(filename="../output/images/run_3_1.png", plot = plt_run3_1, width = 10, height = 8, dpi = 600)
+plt_run3_1
+```
+
+
+```{r run_3_1_storages, fig.width = 10, fig.height = 7}
+# Plot storages
+p_eta_s_all <- plt_s(hbv_run_3_1)
+ggsave(filename="../output/images/storages_run_3_1.png", plot = p_eta_s_all, width = 8, height = 10, dpi = 600)
+
+p_eta_s_all
+```
+
+
+### Assess model performance of Run 3.1
+```{r mod_perf_run_3_1}
+# Assess model performance for run 3.1
+pander(mod.performance(hbv_run_3_1$Qsim, hbv_run_3_1$Qobs))   # RVE gets better; 
+                                                              # NSE worsens (at 10th decimal place)
+```
+\
+
+
+### Run 3.2 with Kf = 0.003/day
+```{r run_3_2_conds, eval=TRUE}
+# Change Kf to 0.003 from 0.001
+# Declare parameters
+param <- data.frame(
+                "fc" = 650,
+                "beta" = 4,
+                "lp" = 1,
+                "cflux" = 0.01,
+                "alpha" = 1,
+                "kf" = 0.003,   # Changed from 0.001
+                "ks" = 0.05
+                )
+
+```
+
+
+```{r run_3_2_df}
+# Create a new dataframe to store the values of Run 3.2
+hbv_run_3_2 <- hbv_run(hbv, int_con, param, 0, pct_perc)
+
+summary(hbv_run_3_2)
+```
+
+
+
+### Plot observed and simulated data for Run 3.2
+```{r run_3_2_plts, fig.width = 10, fig.height = 7}
+# Plot observed and simulated data
+plt_run3_2 <- plt_q(hbv_run_3_2)
+ggsave(filename="../output/images/run_3_2.png", plot = plt_run3_2, width = 10, height = 8, dpi = 600)
+plt_run3_2
+```
+
+
+```{r run_3_2_storages, fig.width = 10, fig.height = 7}
+# Plot storages
+p_eta_s_all <- plt_s(hbv_run_3_2)
+ggsave(filename="../output/images/storages_run_3_2.png", plot = p_eta_s_all, width = 8, height = 10, dpi = 600)
+
+p_eta_s_all
+```
+
+
+### Assess model performance of Run 3.2
+```{r mod_perf_run_3_2}
+# Assess model performance for run 3.2
+pander(mod.performance(hbv_run_3_2$Qsim, hbv_run_3_2$Qobs))   # RVE worsens (10th decimal place), 
+                                                              # NSE improves
+```
+
+
+### Run 3.3 with Kf = 0.007/day
+```{r run_3_3_conds, eval=TRUE}
+# Change Kf to 0.007 from 0.003
+# Declare parameters
+param <- data.frame(
+                "fc" = 650,
+                "beta" = 4,
+                "lp" = 1,
+                "cflux" = 0.01,
+                "alpha" = 1,
+                "kf" = 0.007,   # Changed from 0.003
+                "ks" = 0.05
+                )
+
+```
+
+
+```{r run_3_3_df}
+# Create a new dataframe to store the values of Run 3.3
+hbv_run_3_3 <- hbv_run(hbv, int_con, param, 0, pct_perc)
+
+summary(hbv_run_3_3)
+```
+
+
+
+### Plot observed and simulated data for Run 3.3
+```{r run_3_3_plts, fig.width = 10, fig.height = 7}
+# Plot observed and simulated data
+plt_run3_3 <- plt_q(hbv_run_3_3)
+ggsave(filename="../output/images/run_3_3.png", plot = plt_run3_3, width = 10, height = 8, dpi = 600)
+plt_run3_3
+```
+
+
+```{r run_3_3_storages, fig.width = 10, fig.height = 7}
+# Plot storages
+p_eta_s_all <- plt_s(hbv_run_3_3)
+ggsave(filename="../output/images/storages_run_3_3.png", plot = p_eta_s_all, width = 8, height = 10, dpi = 600)
+
+p_eta_s_all
+```
+
+
+### Assess model performance of Run 3.3
+```{r mod_perf_run_3_3}
+# Assess model performance for run 3.3
+pander(mod.performance(hbv_run_3_3$Qsim, hbv_run_3_3$Qobs))   # RVE worsens, NSE worsens
+```
+
+
+### Run 3.4 with Kf = 0.009/day
+```{r run_3_4_conds, eval=TRUE}
+# Change Kf to 0.009 from 0.007
+# Declare parameters
+param <- data.frame(
+                "fc" = 650,
+                "beta" = 4,
+                "lp" = 1,
+                "cflux" = 0.01,
+                "alpha" = 1,
+                "kf" = 0.009,   # Changed from 0.001
+                "ks" = 0.05
+                )
+
+```
+
+
+```{r run_3_4_df}
+# Create a new dataframe to store the values of Run 3.4
+hbv_run_3_4 <- hbv_run(hbv, int_con, param, 0, pct_perc)
+
+summary(hbv_run_3_4)
+```
+
+### Plot observed and simulated data for Run 3.4
+```{r run_3_4_plts, fig.width = 10, fig.height = 7}
+# Plot observed and simulated data
+plt_run3_4 <- plt_q(hbv_run_3_4)
+ggsave(filename="../output/images/run_3_4.png", plot = plt_run3_4, width = 10, height = 8, dpi = 600)
+plt_run3_4
+```
+
+
+```{r run_3_4_storages, fig.width = 10, fig.height = 7}
+# Plot storages
+p_eta_s_all <- plt_s(hbv_run_3_4)
+ggsave(filename="../output/images/storages_run_3_4.png", plot = p_eta_s_all, width = 8, height = 10, dpi = 600)
+
+p_eta_s_all
+```
+
+### Assess model performance of Run 3.4
+```{r mod_perf_run_3_4}
+# Assess model performance for run 3.4
+pander(mod.performance(hbv_run_3_4$Qsim, hbv_run_3_4$Qobs))   # RVe worsens; NSE worsens
+```
+\
+
+
+### Run 3.5 with Kf = 0.01/day
+```{r run_3_5_conds, eval=TRUE}
+# Change Kf to 0.01 from 0.009
+# Declare parameters
+param <- data.frame(
+                "fc" = 650,
+                "beta" = 4,
+                "lp" = 1,
+                "cflux" = 0.01,
+                "alpha" = 1,
+                "kf" = 0.01,   # Changed from 0.009
+                "ks" = 0.05
+                )
+
+```
+
+
+```{r run_3_5_df}
+# Create a new dataframe to store the values of Run 3.5
+hbv_run_3_5 <- hbv_run(hbv, int_con, param, 0, pct_perc)
+
+summary(hbv_run_3_5)
+```
+
+### Plot observed and simulated data for Run 3.5
+```{r run_3_5_plts, fig.width = 10, fig.height = 7}
+# Plot observed and simulated data
+plt_run3_5 <- plt_q(hbv_run_3_5)
+ggsave(filename="../output/images/run_3_5.png", plot = plt_run3_5, width = 10, height = 8, dpi = 600)
+plt_run3_5
+```
+
+
+```{r run_3_5_storages, fig.width = 10, fig.height = 7}
+# Plot storages
+p_eta_s_all <- plt_s(hbv_run_3_5)
+ggsave(filename="../output/images/storages_run_3_5.png", plot = p_eta_s_all, width = 8, height = 10, dpi = 600)
+
+p_eta_s_all
+```
+
+
+### Assess model performance of Run 3.5
+```{r mod_perf_run_3_5}
+# Assess model performance for Run 3.5
+pander(mod.performance(hbv_run_3_5$Qsim, hbv_run_3_5$Qobs))   # RVE worsens; NSE worsens
+```
+
+### Plot model errors against Kf values
+```{r run_3_errors, fig.width = 10, fig.height = 7}
+# Extract RVE
+RVE <- c(mod.performance(hbv_run_3_1$Qsim, hbv_run_3_1$Qobs)[1],
+                           mod.performance(hbv_run_3_2$Qsim, hbv_run_3_2$Qobs)[1],
+                           mod.performance(hbv_run_2_4$Qsim, hbv_run_2_4$Qobs)[1],
+                           mod.performance(hbv_run_3_3$Qsim, hbv_run_3_3$Qobs)[1],
+                           mod.performance(hbv_run_3_4$Qsim, hbv_run_3_4$Qobs)[1],
+                           mod.performance(hbv_run_3_5$Qsim, hbv_run_3_5$Qobs)[1]
+                          )   # Returns a list
+
+RVE <- unlist(RVE)   # Unlist
+
+
+# Extract NSE
+NSE <- c(mod.performance(hbv_run_3_1$Qsim, hbv_run_3_1$Qobs)[2],
+                           mod.performance(hbv_run_3_2$Qsim, hbv_run_3_2$Qobs)[2],
+                           mod.performance(hbv_run_2_4$Qsim, hbv_run_2_4$Qobs)[2],   # 5% pct_perc & Kf = 0.005 (Run 2.4)
+                           mod.performance(hbv_run_3_3$Qsim, hbv_run_3_3$Qobs)[2],
+                           mod.performance(hbv_run_3_4$Qsim, hbv_run_3_4$Qobs)[2],
+                           mod.performance(hbv_run_3_5$Qsim, hbv_run_3_5$Qobs)[2]
+                          )   # Returns a list
+
+NSE <- unlist(NSE)   # Unlist
+
+
+# Create a data frame  
+df <- data.frame(Kf = c(0.001, 0.003, 0.005, 0.007, 0.009, 0.01), RVE = RVE, NSE = NSE)
+
+
+# Plot RVE
+p_rve <- ggplot(df, aes(x = Kf)) +
+    geom_line(aes(y = RVE, colour = "RVE (%)"), size = 1) +
+    guides(colour=guide_legend(title="")) +
+    ylab("RVE (%)") +
+    xlab("Recession Coefficient, Kf (per day)") +
+    theme_economist()
+  
+# Plot NSE
+p_nse <- ggplot(df, aes(x = Kf)) +
+    geom_line(aes(y = NSE, colour = "NSE"), size = 1) +
+    ylab("NSE") +
+    xlab("Recession Coefficient, Kf (per day)") +
+    guides(colour = guide_legend(title="")) +
+    theme_economist()
+
+# Put the two plots together 
+p_rve_nse <- plot_grid(p_rve, p_nse, ncol=1)
+ggsave(filename="../output/images/run_3_errors.png", plot = p_rve_nse, width = 10, height = 8, dpi = 600)
+p_rve_nse
+```
+
+
+# Conclusion
+An HBV model was developed and water balance equations were solved for the three reservoirs - SM, UZ, and LZ - using an initial condition and a small number of parameters. After the first run, Perc and Kf were tuned to improve the match between simulated and observed discharge hydrographs. Optimum Perc and Kf were determined with RVE and NSE that were estimated to assess the model performance.\
+
+Following Run 1, where percolation was set to a fixed value of 0.1, percolation was modified to be a function of UZ (Perc = x% of UZ). By modifying percolation in this way, a dynamic baseflow was achieved. According to the initial condition that was set and the RVE and NSE values, the optimum percolation was determined to be 10% of UZ. A limitation of this is that $\alpha$ value was not considered. UZ changes with changes in $\alpha$ and this would translate to changes in percolation. As such, it is thought that $\alpha$ parameter should have been tuned before modifying Perc. \
+
+After modifying percolation, recession coefficient (Kf) was tuned to improve the match between simulated and observed discharge curves, especially at the tails for each year. The optimal Kf was found to be 0.003 (per day). \
+
+Overall, since the system is coupled, changes in any one parameter affects discharges from the three reservoirs. Model calibration is not easy, as not only an informed decision has to be made, but models have to be rerun and assessed iteratively. Even so, decisions cannot be based solely on RVE and NSE. To reach a justifiable conclusion, the results of each model has to be critically examined, qualitatively and quantitatively.
+
+
+
+
+
+
